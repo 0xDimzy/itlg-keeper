@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from itlg_keeper.services.recovery import RecoveryService
-
 from conftest import profile_payload
+from itlg_keeper.services.recovery import RecoveryService
 
 
 async def _noop(_delay: float) -> None:

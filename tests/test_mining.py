@@ -6,10 +6,8 @@ import time
 
 import pytest
 
-from itlg_keeper.services.account import AccountService
-from itlg_keeper.services.mining import MiningService
-
 from conftest import profile_payload
+from itlg_keeper.services.mining import MiningService
 
 
 async def _noop(_delay: float) -> None:

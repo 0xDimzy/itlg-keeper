@@ -7,10 +7,9 @@ import hashlib
 
 import pytest
 
+from conftest import content_hash, make_jwt
 from itlg_keeper.auth.tokens import TokenPair
 from itlg_keeper.errors import AuthExpired, RateLimited, TransientError, UpstreamUnavailable
-
-from conftest import content_hash, make_jwt
 
 
 async def test_signed_headers_match_the_android_client(client, fake, settings):

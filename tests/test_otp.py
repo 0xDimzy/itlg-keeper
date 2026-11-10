@@ -63,7 +63,7 @@ def test_reader_requires_imap_credentials(settings):
     broken = settings.account.model_copy(update={"imap_password": None})
     try:
         ImapOtpReader(broken)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         assert "IMAP" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("reader seharusnya menolak konfigurasi tanpa password")

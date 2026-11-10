@@ -14,9 +14,11 @@ operator rotates it explicitly with ``itlg-keeper devices --rotate``.
 
 from __future__ import annotations
 
+import logging
 import os
 import platform
 import secrets
+from datetime import timezone, tzinfo
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -30,6 +32,8 @@ try:  # pragma: no cover - exercised on 3.10 only
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover
     import tomli as tomllib  # type: ignore[no-redef]
+
+log = logging.getLogger("itlg_keeper.config")
 
 CONFIG_FILENAME = "itlg-keeper.toml"
 ENV_PREFIX = "ITLG_"
@@ -143,10 +147,21 @@ class RuntimeSettings(BaseModel):
     @field_validator("timezone")
     @classmethod
     def _valid_tz(cls, value: str) -> str:
+        """Reject nonsense, but tolerate a host without a tz database.
+
+        Windows ships no zoneinfo and needs the ``tzdata`` package; if it is
+        missing we fall back to UTC at render time instead of refusing to start.
+        """
+        if not value.strip():
+            raise ValueError("timezone tidak boleh kosong")
         try:
             ZoneInfo(value)
-        except (ZoneInfoNotFoundError, ValueError) as exc:  # pragma: no cover
-            raise ValueError(f"timezone tidak dikenal: {value}") from exc
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            log.warning(
+                "timezone %r tidak tersedia di sistem ini (pasang paket tzdata); "
+                "menampilkan waktu dalam UTC",
+                value,
+            )
         return value
 
     @model_validator(mode="after")
@@ -158,8 +173,11 @@ class RuntimeSettings(BaseModel):
         return self
 
     @property
-    def tz(self) -> ZoneInfo:
-        return ZoneInfo(self.timezone)
+    def tz(self) -> tzinfo:
+        try:
+            return ZoneInfo(self.timezone)
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            return timezone.utc
 
 
 class Settings(BaseModel):

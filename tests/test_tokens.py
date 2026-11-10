@@ -6,10 +6,9 @@ import asyncio
 
 import pytest
 
+from conftest import make_jwt
 from itlg_keeper.auth.tokens import TokenManager, TokenPair, decode_expiry
 from itlg_keeper.errors import LoginUnavailable
-
-from conftest import make_jwt
 
 
 def test_decode_expiry_reads_jwt_payload():

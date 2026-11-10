@@ -11,6 +11,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from .errors import AuthError
 from .runtime import AppContext
 from .util import humanize, to_local
 
@@ -38,6 +39,7 @@ class StatusView:
     paused: bool = False
     dry_run: bool = False
     tz: Any = None
+    auth_error: str | None = None
 
 
 async def build_status(ctx: AppContext, scheduler=None) -> StatusView:
@@ -51,30 +53,34 @@ async def build_status(ctx: AppContext, scheduler=None) -> StatusView:
         view.daily_rate = profile.daily_rate
         view.group_rate = profile.group_rate
         view.referrals = profile.referrals
+    except AuthError as exc:
+        # One clear message beats four identical failures from four services.
+        view.auth_error = str(exc)
     except Exception as exc:
         errors.append(f"profil: {exc}")
 
-    try:
-        gate = await ctx.mining.gate()
-        view.mining_claimable = gate.claimable
-        view.mining_due = gate.due_at
-    except Exception as exc:
-        errors.append(f"mining: {exc}")
+    if view.auth_error is None:
+        try:
+            gate = await ctx.mining.gate()
+            view.mining_claimable = gate.claimable
+            view.mining_due = gate.due_at
+        except Exception as exc:
+            errors.append(f"mining: {exc}")
 
-    try:
-        snapshot = await ctx.groups.snapshot()
-        view.group_total = snapshot.total_reward
-        view.group_claimable = snapshot.can_claim
-        view.group_due = snapshot.due_at
-    except Exception as exc:
-        errors.append(f"grup: {exc}")
+        try:
+            snapshot = await ctx.groups.snapshot()
+            view.group_total = snapshot.total_reward
+            view.group_claimable = snapshot.can_claim
+            view.group_due = snapshot.due_at
+        except Exception as exc:
+            errors.append(f"grup: {exc}")
 
-    try:
-        recovery = await ctx.recovery.snapshot()
-        view.recovery_total = recovery.total
-        view.recovery_count = len(recovery.claimable)
-    except Exception as exc:
-        errors.append(f"recovery: {exc}")
+        try:
+            recovery = await ctx.recovery.snapshot()
+            view.recovery_total = recovery.total
+            view.recovery_count = len(recovery.claimable)
+        except Exception as exc:
+            errors.append(f"recovery: {exc}")
 
     start_of_day = _start_of_day(view.tz)
     totals = ctx.ledger.claim_totals(start_of_day)
@@ -120,29 +126,43 @@ def render_console(view: StatusView) -> None:
     header.add_row("Saldo", f"[bold cyan]{_num(view.balance)}[/] ITLG")
     header.add_row(
         "Laju",
-        f"harian {_num(view.daily_rate)} · grup {_num(view.group_rate)} · referral {view.referrals}",
+        f"harian {_num(view.daily_rate)} | grup {_num(view.group_rate)} | referral {view.referrals}",
     )
     if view.dry_run:
         header.add_row("Mode", "[yellow]DRY-RUN (tidak ada klaim dikirim)[/]")
     if view.paused:
         header.add_row("Status", "[yellow]dijeda[/]")
 
+    if view.auth_error:
+        console.print(
+            Group(
+                Panel(header, title="[bold]ITLG Keeper[/]", border_style="cyan"),
+                Panel(
+                    f"[yellow]{view.auth_error}[/]\n\n"
+                    "[dim]Jalankan: itlg-keeper login[/]",
+                    title="Perlu login",
+                    border_style="yellow",
+                ),
+            )
+        )
+        return
+
     mining = Text()
     mining.append("frame 4 jam: ", style="dim")
     if view.mining_claimable:
         mining.append("siap diklaim", style="bold green")
     else:
-        mining.append(f"buka dalam {humanize((view.mining_due or 0) - time.time())}")
+        mining.append(_when(view.mining_due))
     mining.append(f"  ({to_local(view.mining_due, view.tz)})\n", style="dim")
     mining.append("group 24 jam: ", style="dim")
     if view.group_claimable:
         mining.append("siap diklaim", style="bold green")
     else:
-        mining.append(f"buka dalam {humanize((view.group_due or 0) - time.time())}")
+        mining.append(_when(view.group_due))
     mining.append(f"  (pool {_num(view.group_total)})\n", style="dim")
     mining.append("pemulihan: ", style="dim")
     mining.append(
-        f"{view.recovery_count} burn · {_num(view.recovery_total)} ITLG"
+        f"{view.recovery_count} burn | {_num(view.recovery_total)} ITLG"
         if view.recovery_count
         else "tidak ada",
         style="bold green" if view.recovery_count else "",
@@ -151,7 +171,7 @@ def render_console(view: StatusView) -> None:
     today = Table(box=None, padding=(0, 1), show_header=False)
     today.add_column(style="dim", justify="right")
     today.add_column()
-    today.add_row("Hari ini", f"{view.claims_today} klaim · +{_num(view.amount_today)} ITLG")
+    today.add_row("Hari ini", f"{view.claims_today} klaim | +{_num(view.amount_today)} ITLG")
     for row in view.workers:
         today.add_row(*row)
 
@@ -162,7 +182,7 @@ def render_console(view: StatusView) -> None:
     for item in view.history:
         history.add_row(
             to_local(item.get("at"), view.tz),
-            f"{item.get('kind')} · {item.get('status')}",
+            f"{item.get('kind')} | {item.get('status')}",
             _num(item.get("amount")) if item.get("amount") is not None else "",
         )
 
@@ -170,9 +190,19 @@ def render_console(view: StatusView) -> None:
         Panel(header, title="[bold]ITLG Keeper[/]", border_style="cyan"),
         Panel(mining, title="Jadwal", border_style="blue"),
         Panel(today, title="Ringkasan", border_style="blue"),
-        Panel(history if view.history else Text("belum ada riwayat", style="dim"), title="Aktivitas", border_style="blue"),
+        Panel(
+            history if view.history else Text("belum ada riwayat", style="dim"),
+            title="Aktivitas",
+            border_style="blue",
+        ),
     )
     console.print(body)
+
+
+def _when(due: float | None) -> str:
+    if due is None:
+        return "menunggu data"
+    return f"buka dalam {humanize(due - time.time())}"
 
 
 def render_telegram(view: StatusView) -> str:

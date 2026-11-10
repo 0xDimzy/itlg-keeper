@@ -6,9 +6,8 @@ import time
 
 import pytest
 
-from itlg_keeper.services.groups import GroupService
-
 from conftest import profile_payload
+from itlg_keeper.services.groups import GroupService
 
 
 async def _noop(_delay: float) -> None:
