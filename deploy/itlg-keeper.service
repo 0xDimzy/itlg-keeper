@@ -1,0 +1,32 @@
+[Unit]
+Description=ITLG Keeper - penjaga klaim Interlink Labs
+Documentation=https://github.com/0xDimzy/itlg-keeper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=itlg
+Group=itlg
+EnvironmentFile=/etc/itlg-keeper.env
+ExecStart=/usr/local/bin/itlg-keeper run
+Restart=always
+RestartSec=15
+TimeoutStopSec=20
+KillSignal=SIGTERM
+
+# Hardening: the process only needs its own data directory.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/itlg-keeper
+StateDirectory=itlg-keeper
+
+[Install]
+WantedBy=multi-user.target

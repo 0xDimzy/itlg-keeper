@@ -1,0 +1,18 @@
+services:
+  keeper:
+    build: .
+    image: itlg-keeper:latest
+    container_name: itlg-keeper
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ITLG_DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    # The daemon is stateless per run; this keeps logs bounded in docker.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
